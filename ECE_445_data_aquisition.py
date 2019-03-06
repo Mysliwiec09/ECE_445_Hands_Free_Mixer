@@ -6,6 +6,7 @@ Created on Tue Mar  5 17:58:41 2019
 Sample code used as reference: 
     https://codehandbook.org/how-to-read-email-from-gmail-using-python/
     http://www.jonwitts.co.uk/archives/896
+    https://ubuntuforums.org/showthread.php?t=2394609
     
 The following code should receive data from our drink mixer email. When a user
 wants to close their tab press Enter and then type in their name to print their
@@ -13,9 +14,6 @@ drink purchases and the total cost.
 """
 
 import numpy, smtplib, time, imaplib, email
-import sys, termios, tty, os
-import imaplib, email
-
 
 # define constant variables
 Email = "handsfreemixer445@gmail.com"
@@ -54,29 +52,42 @@ def read_latest_email():
 
     mail.store(latest_email_id, '+FLAGS', '\\Deleted')
     
-    return email_subject, email_message
+    return email_subject, email_message   
 
-# Function to check what has been pressed
-def getch():
-    fd = sys.stdin.fileno()
-    old_settings = termios.tcgetattr(fd)
+# Main function to run until interupted     
+boolean = 0
+tab = {"initialize": ["LEMONADE", "COKE"]}
+while (boolean == 0):
+    
     try:
-        tty.setstraw(sys.stdin.fileno())
-        ch = sys.stdin.read(1)
-        
-    finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-    return ch
-
-# Main function to run until interupted
-while true:
-    char = getch()
+        while (boolean == 0):
+            email_subject, email_message = read_latest_email()
+            if(email_subject != 'N/A'):
+                if(email_subject in tab.keys()):
+                    tab[email_subject].append(email_message)
+                    print(email_subject)
+                    print(email_message)   
+                else:
+                    tab[email_subject] = [email_message]
+            time.sleep(button_delay)
     
-    if(char == "Enter"):
-        name = raw_input("PLEASE ENTER CUSTOMER NAME: ")
-        
-    email_subject, email_message = read_latest_email()
-    
-    print(email_subject)
-    print(email_message)
+    except KeyboardInterrupt:
+        julian = 0
+        while(julian == 0):
+            data = input("PLEASE ENTER CUSTOMER NAME: ")
+            name = data.upper()
+            if(name in tab.keys()):
+                print('NAME:')
+                print(name)
+                print('DRINKS PURCHASED:')
+                for i in tab[name]:
+                    print(i)
+                print('ORDER TOTAL:')
+                print(len(tab[name]))
+                tab.pop(name, None)
+                julian = 1
+            if(name == "QUIT"):
+                julian = 1
+            else:
+                print('ERROR: NAME NOT FOUND')
 
