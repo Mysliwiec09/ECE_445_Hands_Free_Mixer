@@ -15,6 +15,9 @@
 #include <ESP8266WiFi.h>
 #include "Gsender.h"
 
+/* LCD */
+#include <LiquidTWI2.h>
+
 /******** Configurations and pin definitions **********/
 
 // MFRC522 RFID
@@ -34,6 +37,8 @@ uint8_t connection_state = 0;               // Connected to WIFI or not
 uint16_t reconnect_interval = 5000;        // If not connected wait time to try again
 uint8_t WIFI_LED_PIN = 8;                   // Physical pin 1 on MCP0; subject to change
 
+// LCD Config
+LiquidTWI2 lcd (0x20);
  
 
 void setup() { 
@@ -63,6 +68,8 @@ void setup() {
   WiFi.begin(ssid, password);
   Serial.println(ssid);
   uint8_t i = 0;
+
+  /* UNCOMMENT TO ENABLE WIFI
   while(WiFi.status()!= WL_CONNECTED && i++ < 50)
   {
     delay(200);
@@ -75,30 +82,30 @@ void setup() {
     Serial.println(WiFi.localIP());
   }else{
     Serial.println(F("ERROR: WiFi could not connect, check ssid and password."));
-  }    
-  Serial.println();
-
-  /*
-  // Gmail Test
-  Serial.println(F("Gmail Test!"));
-  Gsender *gsender = Gsender::Instance();    // Getting pointer to class instance
-  String subject = "Test Subject 123";
-  if(gsender->Subject(subject)->Send("handsfreemixer445@gmail.com", "Setup email content 12345")) {
-      Serial.println("Message send.");
-  } else {
-      Serial.print("Error sending message: ");
-      Serial.println(gsender->getError());
   }
-  */
   Serial.println();
+  */    
+
+  // LCD Initialization
+  lcd.setMCPType (LTI_TYPE_MCP23017);
+  lcd.begin (16, 2); /* dimension */
+  /*
+  lcd.print ( "Hi");
+  lcd.setCursor (0, 1); // setting x,y pos
+  lcd.print ("Welcome2 Chili's");
+  */
+  /* Display Welcome Message */
+  lcd.setCursor(0,0);
+  lcd.print("    Welcome!    ");
+  lcd.setCursor(0,1);
+  lcd.print(" Scan your RFID ");
+
 }
  
-void loop() {
+void loop() {  
 
-  // STEP 1: ON LCD: DISPLAY WELCOME MESSAGE, ASK TO SCAN RFID
-
-
-  // STEP 2: SCAN RFID
+  // STEP 1: SCAN RFID
+  
   if ( ! rfid.PICC_IsNewCardPresent()) return; // Look for new cards
   if ( ! rfid.PICC_ReadCardSerial()) return;   // Verify if the NUID has been readed
 
@@ -110,17 +117,17 @@ void loop() {
   rfid.PICC_HaltA();
   rfid.PCD_StopCrypto1();
 
-  // STEP 3: SHOW MENU, HAVE THE USER SELECT W/ BUTTONPRESS
+  // STEP 2: SHOW MENU, HAVE THE USER SELECT W/ BUTTONPRESS
 
 
-  // STEP 4: MAKE DRINKS
+  // STEP 3: MAKE DRINKS
 
 
-  // STEP 5: RESET POSITION
+  // STEP 4: RESET POSITION
 
 
-  // STEP 6: SEND EMAIL
-
+  // STEP 5: SEND EMAIL
+  /* UNCOMMENT TO ENABLE
   Serial.println(F("Sending Order to the Server..."));
   Gsender *gsender = Gsender::Instance();    // Getting pointer to class instance
   if(gsender->Subject(UID)->Send("handsfreemixer445@gmail.com", "drinkName")) {
@@ -130,6 +137,14 @@ void loop() {
       //Serial.println(gsender->getError());
   }
   Serial.println();
+  */
+
+  // STEP 6: ON LCD: DISPLAY WELCOME MESSAGE, ASK TO SCAN RFID
+  lcd.setCursor(0,0);
+  lcd.print("    Welcome!    ");
+  lcd.setCursor(0,1);
+  lcd.print(" Scan your RFID ");
+
 
   // RETURN TO STEP 1
   delay(1000);
