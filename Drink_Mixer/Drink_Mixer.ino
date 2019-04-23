@@ -52,7 +52,6 @@ uint8_t BUTTON_LEFT_PIN   =  7;
 uint8_t BUTTON_RIGHT_PIN  =  6;
 uint8_t BUTTON_BACK_PIN   =  5;
 uint8_t BUTTON_SELECT_PIN =  4;
-ButtonPress buttonPrev = UNDEFINED; /* default state */
 
 // Inventory and Recipes
 char * INVENTORY[] = {"Water", "Vodka", "OJ", "Coke", "Rum"}; // drink ingredients/supplies
@@ -66,16 +65,10 @@ int RECIPE[4][5] = {
   {0, 0, 0, 133, 45}, // Rum & Coke
   {0, 60, 118, 0, 0}  // Screwdriver
 };
-int CURRENT_DRINK_IDX = 0;
+volatile int CURRENT_DRINK_IDX = 0;
 
 // Stepmotor, cup positioning
-float CUP_POSITION = 0;
-enum Direction{
-  CW, // 0
-  CCW // 1
-};
-Direction DIRECTION = CW;
-
+volatile int CUP_POSITION = 0;
 
 // MOTOR/FLOWMETER PINS
 uint8_t STEPPER_SIGNAL_PIN =     9;
@@ -107,7 +100,6 @@ void setup() {
   Serial.println(F("...RFID Module Initialized."));
   Serial.print(F("Using the following key:"));
   printHex(key.keyByte, MFRC522::MF_KEY_SIZE);
-  Serial.println();
   Serial.println();
 
 
@@ -158,13 +150,12 @@ void setup() {
   Serial.println();
   */
 
+
   // LCD Initialization
   lcd.setMCPType (LTI_TYPE_MCP23017);
   lcd.begin (16, 2); // dimension 
+  lcd.clear();
   displayWelcomeScreen();
-
-  // MCP WiFi LED Test
-  mcp1.digitalWrite(WIFI_LED_PIN, HIGH);
 
   // Keep all Pumps Low (although they should be by default)
   mcp1.digitalWrite(PUMP_1_SIGNAL_PIN, LOW);
@@ -173,13 +164,16 @@ void setup() {
   mcp1.digitalWrite(PUMP_4_SIGNAL_PIN, LOW);
   mcp1.digitalWrite(PUMP_5_SIGNAL_PIN, LOW);
 
+  recalibrate();
+  mcp1.digitalWrite(STEPPER_DIRECTION_PIN, HIGH);  // DISABLES STEPPER
   Serial.println("Setup Done!");
+  
 }
 
 void loop() {
-
+  
   // STEP 1: SCAN RFID
-
+  
   if ( ! rfid.PICC_IsNewCardPresent()) return; // Look for new cards
   if ( ! rfid.PICC_ReadCardSerial()) return;   // Verify if the NUID has been read
 
@@ -199,13 +193,15 @@ void loop() {
   // STEP 2: SHOW MENU, HAVE THE USER SELECT W/ BUTTONPRESS
 
   delay(1000);
-  while (buttonPrev != SELECT) {
+  while (1) {
+    delay(100);
     // LEFT BUTTON PRESSED
     if (mcp0.digitalRead(BUTTON_LEFT_PIN) == HIGH) {
       Serial.println("Left Pressed : Show prev recipe");
       Serial.println(CURRENT_DRINK_IDX);
       CURRENT_DRINK_IDX = (CURRENT_DRINK_IDX == 0)? NUM_RECIPES-1 : --CURRENT_DRINK_IDX;
       displayDrink(CURRENT_DRINK_IDX);
+      continue;
     }
     // RIGHT BUTTON PRESSED
     if (mcp0.digitalRead(BUTTON_RIGHT_PIN) == HIGH) {
@@ -213,6 +209,7 @@ void loop() {
       Serial.println(CURRENT_DRINK_IDX);
       CURRENT_DRINK_IDX = (++CURRENT_DRINK_IDX) % NUM_RECIPES;
       displayDrink(CURRENT_DRINK_IDX);
+      continue;
     }
     // SELECT BUTTON PRESSED
     if (mcp0.digitalRead(BUTTON_SELECT_PIN) == HIGH) {
@@ -222,29 +219,32 @@ void loop() {
     // BACK BUTTON PRESSED
     if (mcp0.digitalRead(BUTTON_BACK_PIN) == HIGH) {
       Serial.println("Back Pressed : Order canceled, back to main menu");
-      Serial.println(CURRENT_DRINK_IDX);
       displayWelcomeScreen();
       lcd.setCursor(0, 0);
       lcd.print("Order Cancelled!");
+      CURRENT_DRINK_IDX = 0;
       return;
     }
+    
     delay(100);
   }
-
+  
+  
   // STEP 3: MAKE DRINKS
   Serial.println("Making Selected Drink...");
   lcd.setCursor(0,0);
   lcd.print("  Making Drink  ");
   delay(100);
-
   makeDrink(CURRENT_DRINK_IDX);
 
+  lcd.setCursor(0,0);
   lcd.print("Drink Finished! ");
-  delay(1000);
+  delay(2000);
   
   // STEP 4: RESET POSITION
   lcd.setCursor(0,1);
-  lcd.print("Recalibrating...")
+  lcd.print("  calibrating...");
+  delay(1000);
   recalibrate();
 
   // STEP 5: SEND EMAIL
@@ -260,40 +260,55 @@ void loop() {
     Serial.println();
   */
 
+  mcp1.digitalWrite(STEPPER_DIRECTION_PIN, HIGH);  // Disable Stepper, free up more power
   // STEP 6: ON LCD: DISPLAY WELCOME MESSAGE, ASK TO SCAN RFID
+  lcd.clear();
   displayWelcomeScreen();
-
-
-  // RETURN TO STEP 1
-
+  
 }
 
 // HELPER FUNCTIONS BELOW**********************************************
+
+void testStepperPour(){
+  moveCupTo(POSITIONS[0]);
+  pour(0,100);
+  moveCupTo(POSITIONS[1]);
+  pour(1,100);
+  moveCupTo(POSITIONS[2]);
+  pour(2,100);
+  moveCupTo(POSITIONS[3]);
+  pour(3,100);
+  moveCupTo(POSITIONS[4]);
+  pour(4,100);    
+}
+
 void pour(int pump_idx, int volume){
+  mcp1.digitalWrite(STEPPER_DIRECTION_PIN, HIGH); // disable stepper
   int multiplier = 1; // change this later to calibrate
-  mcp1.digitalWrite(PUMP_1_SIGNAL_PIN + i, HIGH);
+  mcp1.digitalWrite(PUMP_1_SIGNAL_PIN + pump_idx, HIGH);
+  //mcp1.digitalWrite(PUMP_1_SIGNAL_PIN, HIGH);
+  /*
   for(int tick = 0; tick < volume * multiplier;){
-    if(mcp1.digitalRead(FLOWMETER_1_PIN - i) != 0) tick++; //indicates there's flow
+    if(mcp1.digitalRead(FLOWMETER_1_PIN - pump_idx) != 0) tick++; //indicates there's flow
   }
+  */
+  delay(3500);
+  mcp1.digitalWrite(PUMP_1_SIGNAL_PIN + pump_idx, LOW);
+  delay(1000);
+  //mcp1.digitalWrite(PUMP_1_SIGNAL_PIN, LOW);
+  //mcp1.digitalWrite(STEPPER_DIRECTION_PIN, LOW); // re-enable stepper
 }
 
 // STEPPER MOTOR HELPER FUNCTIONS(MAKING DRINKS)
 void moveCupTo(int target_pos){
+  mcp1.digitalWrite(STEPPER_DIRECTION_PIN, LOW); // enable stepper
+  delay(500);
   if(CUP_POSITION == target_pos) return;
   
-  // choose direction of shortest distance; 1 = CW, 0 = CCW
   int distance = target_pos - CUP_POSITION; // clockwise distance
   if(distance < 0) distance += 400;
 
-  if(distance < 200){
-    DIRECTION = CW;
-  }else{
-    DIRECTION = CCW;
-    distance = 400 - distance;
-  }
-
-  mcp1.digitalWrite(STEPPER_DIRECTION_PIN, DIRECTION);
-  delay(20);
+  delay(500);
   for(int i=0;i<distance;++i){
     mcp1.digitalWrite(STEPPER_SIGNAL_PIN, HIGH);
     delay(20);
@@ -301,16 +316,20 @@ void moveCupTo(int target_pos){
     delay(20);
   }
   CUP_POSITION = target_pos;  
+
+  mcp1.digitalWrite(STEPPER_DIRECTION_PIN, HIGH); // disable stepper
 }
 
 
 void makeDrink(int CURRENT_DRINK_IDX){
   for(int i=0;i<NUM_INGREDIENTS;++i){
     if(RECIPE[CURRENT_DRINK_IDX][i] == 0) continue; // skip if 0 amount is to be poured
+    delay(100);
     moveCupTo(POSITIONS[i]);
     // note: pump pin #'s are increments of each other; pump_1 = 0, pump_2 = 1, pump_3 = 2, etc
+    delay(100);
     pour(i, RECIPE[CURRENT_DRINK_IDX][i]); // pump idx(0~4),amount) 
-    delay(500);
+    delay(100);
   }
 }
 
@@ -318,22 +337,28 @@ void makeDrink(int CURRENT_DRINK_IDX){
 void recalibrate(){
 
   // set shorter direction to 0
-  DIRECTION = (CUP_POSITION > 200)? CW : CCW;
-  mcp1.digitalWrite(STEPPER_DIRECTION_PIN, DIRECTION);
-  int threshold = 500;
+  mcp1.digitalWrite(STEPPER_DIRECTION_PIN, LOW); // enable stepper
 
   // turn laser on
   mcp1.digitalWrite(LASER_SIGNAL_PIN, HIGH);
 
   // move until laser value 0
-  while(mcp1.digitalRead(PHOTOCELL_PIN) < threshold){
+  while(mcp1.digitalRead(PHOTOCELL_PIN) == 1){
     mcp1.digitalWrite(STEPPER_SIGNAL_PIN, HIGH);
     delay(20);
     mcp1.digitalWrite(STEPPER_SIGNAL_PIN, LOW);
     delay(20);
   }
+  mcp1.digitalWrite(LASER_SIGNAL_PIN, LOW);
 
-  CUP_POSITION = 0;
+  // turn the cup to front
+  for(int i=0;i<200;++i){
+    mcp1.digitalWrite(STEPPER_SIGNAL_PIN, HIGH);
+    delay(20);
+    mcp1.digitalWrite(STEPPER_SIGNAL_PIN, LOW);
+    delay(20);
+  }
+  CUP_POSITION = 200;
 }
 
 // LCD HELPER FUNCTIONS
@@ -349,7 +374,7 @@ void displayDrink(int idx){ // display drink on the bottom row of the lcd
   if(idx >= NUM_RECIPES) Serial.println(F("drink idx invalid"));
   lcd.setCursor(0, 1);
   lcd.print("                ");
-  lcd.setCursor(1, 1);
+  lcd.setCursor(0, 1);
   lcd.print(RECIPE_NAME[idx]);
 }
 
